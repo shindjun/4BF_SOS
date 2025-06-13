@@ -279,9 +279,9 @@ tap_series = [total_tapped] * len(time_labels)
 residual_series = [max(g - total_tapped, 0) for g in gen_series]
 
 plt.figure(figsize=(8, 5))
-plt.plot(time_labels, gen_series, label="누적 생산량 (ton)")
-plt.plot(time_labels, tap_series, label="누적 출선량 (ton)")
-plt.plot(time_labels, residual_series, label="저선량 (ton)")
+plt.plot(time_labels, gen_series, label="Prod (ton)")
+plt.plot(time_labels, tap_series, label="Tapping (ton)")
+plt.plot(time_labels, residual_series, label="Residual (ton)")
 plt.xlabel("경과시간 (분)")
 plt.ylabel("ton")
 plt.title("실시간 용융물 수지추적")
