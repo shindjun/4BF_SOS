@@ -98,27 +98,6 @@ if abnormal_active:
     abnormal_pci_rate = st.sidebar.number_input("비상 미분탄 (kg/thm)", value=pci_rate)
     abnormal_wind_unit = st.sidebar.number_input("비상 송풍원단위 (Nm³/t)", value=wind_unit)
 
-# ========================== 3부: 비상조업 + 감풍·휴풍 보정입력 ==========================
-
-# 비상조업 보정 입력
-st.sidebar.header("② 비상조업 보정입력")
-abnormal_active = st.sidebar.checkbox("비상조업 보정 적용", value=False)
-
-if abnormal_active:
-    abnormal_start_time = st.sidebar.time_input("비상 시작시각", value=datetime.time(10, 0))
-    abnormal_end_time = st.sidebar.time_input("비상 종료시각", value=datetime.time(13, 0))
-
-    # 체류시간 보정 이동 (정상조업에서 삭제 후 여기로 이동)
-    total_melting_delay = st.sidebar.number_input("체류시간 보정 (분)", value=300)
-
-    abnormal_charging_delay = st.sidebar.number_input("비상 장입지연 누적시간 (분)", value=0)
-    abnormal_blast_volume = st.sidebar.number_input("비상 송풍량 (Nm³/min)", value=blast_volume)
-    abnormal_oxygen_volume = st.sidebar.number_input("비상 산소부화량 (Nm³/hr)", value=oxygen_volume)
-    abnormal_oxygen_enrichment = st.sidebar.number_input("비상 산소부화율 (%)", value=oxygen_enrichment_manual)
-    abnormal_humidification = st.sidebar.number_input("비상 조습량 (g/Nm³)", value=humidification)
-    abnormal_pci_rate = st.sidebar.number_input("비상 미분탄 (kg/thm)", value=pci_rate)
-    abnormal_wind_unit = st.sidebar.number_input("비상 송풍원단위 (Nm³/t)", value=wind_unit)
-
 # 감풍·휴풍 보정 입력
 st.sidebar.header("③ 감풍·휴풍 보정입력")
 reduction_active = st.sidebar.checkbox("감풍·휴풍 보정 적용", value=False)
@@ -255,6 +234,10 @@ tap_total_output = fixed_avg_tap_output * completed_taps
 
 # TAP당 평균 출선시간 (분)
 fixed_avg_tap_time = st.sidebar.number_input("TAP당 평균 출선시간 (분)", value=252.0)
+
+# 선행/후행 출선 시작 시각 (07시 기준 분 계산)
+lead_start_time = st.sidebar.time_input("선행 출선 시작 시각", value=datetime.time(10, 0))
+follow_start_time = st.sidebar.time_input("후행 출선 시작 시각", value=datetime.time(13, 30))
 
 # 현재 시각 기준 선행/후행 출선 경과시간 (분)
 lead_elapsed_time = (now - datetime.datetime.combine(base_date, lead_start_time)).total_seconds() / 60
