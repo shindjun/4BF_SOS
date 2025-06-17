@@ -246,6 +246,8 @@ elif residual_molten >= 100:
 else:
     status = "✅ 정상운전"
 
+total_production_ton = production_ton_ai
+
 # ========================== 6부: AI 출선전략 + 공취예상시간 + 출선소요시간 ==========================
 
 # 평균 출선량 (실측 TAP 기준 참고)
