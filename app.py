@@ -31,49 +31,6 @@ elapsed_minutes = (now - today_start).total_seconds() / 60
 elapsed_minutes = max(min(elapsed_minutes, 1440), 60)
 
 # ========================== 2부: 정상조업 입력부 ==========================
-st.sidebar.header("① 정상조업 기본입력")
-
-# 장입속도
-charging_time_per_charge = st.sidebar.number_input("1Charge 장입시간 (분)", value=11.0)
-charge_rate = 60 / charging_time_per_charge
-
-# 장입량
-total_ore_per_charge = st.sidebar.number_input("Ore 장입량 (ton/ch)", value=165.0)
-total_coke_per_charge = st.sidebar.number_input("Coke 장입량 (ton/ch)", value=33.0)
-net_coke = st.sidebar.number_input("너트코크 장입량 (kg)", value=0.0)
-ore_per_charge = total_ore_per_charge
-coke_per_charge = total_coke_per_charge + (net_coke / 1000.0)
-
-# O/C 계산 및 입력
-o_c_ratio = st.sidebar.number_input("ORE/COKE 비율", value=round(ore_per_charge / coke_per_charge, 2))
-
-# 철광석 성분
-tfe_percent = st.sidebar.number_input("T.Fe 함량 (%)", value=58.0)
-slag_ratio = st.sidebar.number_input("슬래그 비율 (용선:슬래그)", value=2.25)
-
-# 기본 조업지수
-reduction_efficiency = st.sidebar.number_input("기본 환원율", value=1.0)
-melting_capacity = st.sidebar.number_input("용해능력 (°CKN m²/T-P)", value=2800)
-
-# 송풍 및 산소
-blast_volume = st.sidebar.number_input("송풍량 (Nm³/min)", value=7200.0)
-oxygen_volume = st.sidebar.number_input("산소부화량 (Nm³/hr)", value=36961.0)
-oxygen_enrichment_manual = st.sidebar.number_input("산소부화율 수동입력 (%)", value=6.0)
-
-# 조습 및 미분탄
-humidification = st.sidebar.number_input("조습량 (g/Nm³)", value=14.0)
-pci_rate = st.sidebar.number_input("미분탄 취입량 (kg/thm)", value=170)
-
-# 압력 및 온도
-top_pressure = st.sidebar.number_input("노정압 (kg/cm²)", value=2.5)
-blast_pressure = st.sidebar.number_input("풍압 (kg/cm²)", value=3.9)
-hot_blast_temp = st.sidebar.number_input("풍온 (°C)", value=1180)
-measured_temp = st.sidebar.number_input("실측 용선온도 (°C)", value=1515.0)
-
-# 송풍원단위 (Nm³/t)
-wind_unit = st.sidebar.number_input("송풍원단위 (Nm³/t)", value=1189.0)
-
-# ========================== 2부: 정상조업 입력부 ==========================
 
 st.sidebar.header("① 정상조업 기본입력")
 
