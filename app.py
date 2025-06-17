@@ -361,4 +361,3 @@ st.dataframe(df)
 # 🔧 CSV 다운로드 기능
 csv = df.to_csv(index=False).encode('utf-8-sig')
 st.download_button("📥 CSV 다운로드", data=csv, file_name="BlastTap_9.7_Pro_Report.csv", mime='text/csv')
-
