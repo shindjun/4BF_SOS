@@ -23,8 +23,7 @@ st.title("🔥 BlastTap 10.3 Pro — AI 기반 고로조업 실시간 통합관�
 if 'log' not in st.session_state:
 st.session_state['log'] = []
 
-기준일자 설정 (07시 교대 기준)
-
+#기준일자 설정 (07시 교대 기준)
 now = datetime.datetime.now()
 if now.hour < 7:
 base_date = datetime.date.today() - datetime.timedelta(days=1)
