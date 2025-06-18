@@ -1,5 +1,6 @@
 import streamlit as st
 import datetime
+import matplotlib.pyplot as plt
 
 # -- 세션에 고정시각 변수 선언 --
 if 'fixed_now_time' not in st.session_state:
