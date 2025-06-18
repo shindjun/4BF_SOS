@@ -1,3 +1,5 @@
+# 🔧 리팩토링된 BlastTap 10.3 Pro 초기부 코드 (한글 주석 오류 제거 및 들여쓰기 보정)
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -5,34 +7,30 @@ import matplotlib.pyplot as plt
 import matplotlib
 import platform
 
-폰트 설정 (한글 안정화)
-
+# 폰트 설정 (한글 안정화)
 if platform.system() == "Windows":
-matplotlib.rcParams['font.family'] = 'Malgun Gothic'
+    matplotlib.rcParams['font.family'] = 'Malgun Gothic'
 else:
-matplotlib.rcParams['font.family'] = 'NanumGothic'
+    matplotlib.rcParams['font.family'] = 'NanumGothic'
 matplotlib.rcParams['axes.unicode_minus'] = False
 
-페이지 설정
-
+# 페이지 설정
 st.set_page_config(page_title="BlastTap 10.3 Pro — AI 조업엔진", layout="wide")
 st.title("🔥 BlastTap 10.3 Pro — AI 기반 고로조업 실시간 통합관리")
 
-세션 로그 초기화
-
+# 세션 로그 초기화
 if 'log' not in st.session_state:
-st.session_state['log'] = []
+    st.session_state['log'] = []
 
-#기준일자 설정 (07시 교대 기준)
+# 기준일자 설정 (07시 교대 기준)
 now = datetime.datetime.now()
 if now.hour < 7:
-base_date = datetime.date.today() - datetime.timedelta(days=1)
+    base_date = datetime.date.today() - datetime.timedelta(days=1)
 else:
-base_date = datetime.date.today()
+    base_date = datetime.date.today()
 today_start = datetime.datetime.combine(base_date, datetime.time(7, 0))
 
-경과 시간 계산 (07시 기준)
-
+# 경과 시간 계산 (07시 기준)
 elapsed_minutes = (now - today_start).total_seconds() / 60
 elapsed_minutes = max(min(elapsed_minutes, 1440), 0)
 
