@@ -219,56 +219,44 @@ production_ton_ai = (
     normal_production + abnormal_production + reduction_production + after_production
 )
 
-# ========================== 5부: 실측출선 + 저선량 + 슬래그 계산 ==========================
+# ========================== 5부: 실측출선 + 저선량 + 슬래그 + 실측 저선량 입력 ==========================
+st.sidebar.header("④ 실측출선 데이터 입력")
 
-st.sidebar.header("⑤ 실측 출선 데이터 입력")
-
-# TAP당 평균 출선량 (ton)
-fixed_avg_tap_output = st.sidebar.number_input("TAP당 평균 출선량 (ton)", value=1250.0)
-
-# 종료된 TAP 수
+# TAP 기준 출선량
+fixed_avg_tap_output = st.sidebar.number_input("TAP당 평균용선출선량 (ton)", value=1250.0)
 completed_taps = st.sidebar.number_input("종료된 TAP 수 (EA)", value=5)
-
-# TAP 출선량 합계
 tap_total_output = fixed_avg_tap_output * completed_taps
 
-# TAP당 평균 출선시간 (분)
-fixed_avg_tap_time = st.sidebar.number_input("TAP당 평균 출선시간 (분)", value=252.0)
+# 선행/후행 출선 (소요시간 기반 계산)
+st.sidebar.header("⑤ 실시간 선행/후행 출선 현황")
 
-# 선행/후행 출선 시작 시각 (07시 기준 분 계산)
-lead_start_time = st.sidebar.time_input("선행 출선 시작 시각", value=datetime.time(10, 0))
-follow_start_time = st.sidebar.time_input("후행 출선 시작 시각", value=datetime.time(13, 30))
+lead_duration = st.sidebar.number_input("선행 출선 소요시간 (분)", value=90.0)
+follow_duration = st.sidebar.number_input("후행 출선 소요시간 (분)", value=30.0)
 
-# 현재 시각 기준 선행/후행 출선 경과시간 (분)
-lead_elapsed_time = (now - datetime.datetime.combine(base_date, lead_start_time)).total_seconds() / 60
-follow_elapsed_time = (now - datetime.datetime.combine(base_date, follow_start_time)).total_seconds() / 60
-
-# 출선속도 (ton/min)
 lead_speed = st.sidebar.number_input("선행 출선속도 (ton/min)", value=4.5)
 follow_speed = st.sidebar.number_input("후행 출선속도 (ton/min)", value=4.5)
 
-# 선행/후행 출선량
-lead_output = max(lead_elapsed_time, 0) * lead_speed
-follow_output = max(follow_elapsed_time, 0) * follow_speed
+lead_output = lead_duration * lead_speed
+follow_output = follow_duration * follow_speed
 
-# 누적 용선 출선량 (TAP + 선행 + 후행)
+# 누적 용선출선량 (TAP + 선행 + 후행)
 total_tapped_hot_metal = tap_total_output + lead_output + follow_output
 
-# 누적 슬래그량 (자동 계산 — 참고용)
+# 누적 슬래그출선량 (참고용 자동계산)
 total_tapped_slag = total_tapped_hot_metal / slag_ratio
 
-# AI 계산 기반 현재 저선량
-residual_molten = production_ton_ai - total_tapped_hot_metal
+# AI 계산 저선량 (용선 기준, 슬래그 미포함)
+residual_molten = total_production_ton - total_tapped_hot_metal
 residual_molten = max(residual_molten, 0)
-residual_rate = (residual_molten / production_ton_ai) * 100 if production_ton_ai > 0 else 0
+residual_rate = (residual_molten / total_production_ton) * 100 if total_production_ton > 0 else 0
 
-# 실측 저선량 수동 입력
+# 실측 저선량 수동입력
 measured_residual_molten = st.sidebar.number_input("실측 저선량 (ton)", value=45.0)
 
-# AI-실측 저선량 오차
+# AI-실측 저선량 차이
 residual_gap = residual_molten - measured_residual_molten
 
-# 저선 경보 상태
+# 조업상태 경고
 if residual_molten >= 200:
     status = "🔴 저선 위험 (비상)"
 elif residual_molten >= 150:
