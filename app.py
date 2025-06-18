@@ -5,55 +5,60 @@ import matplotlib.pyplot as plt
 import matplotlib
 import platform
 
-# ----------- 1부: 환경설정 및 기준일시/기준시각 입력 -------------
-# 한글 폰트 설정
+# ===== 한글 폰트 설정 =====
 if platform.system() == "Windows":
     matplotlib.rcParams['font.family'] = 'Malgun Gothic'
 else:
     matplotlib.rcParams['font.family'] = 'NanumGothic'
 matplotlib.rcParams['axes.unicode_minus'] = False
 
-# 페이지 및 타이틀
 st.set_page_config(page_title="BlastTap 10.3 Pro — AI 조업엔진", layout="wide")
 st.title("🔥 BlastTap 10.3 Pro — AI 기반 고로조업 실시간 통합관리")
 
-# 세션 로그 초기화
 if 'log' not in st.session_state:
     st.session_state['log'] = []
 
-# ========================== 기준일자/시각 입력 ==========================
-st.sidebar.header("🗓️ 기준일자/기준일시 입력")
+# ==== 📅 기준일자 및 기준시각/현재시각 입력 ====
+st.sidebar.header("🕒 현재 시각 입력")
 
-# 기준일자 (예: 2025-06-18)
+# 1. 기준일자(달력) 선택
 base_date = st.sidebar.date_input("기준일자", value=datetime.date.today())
 
-# 기준 시작시각 (예: 07:00)
-default_time = datetime.time(7, 0)
-start_time = st.sidebar.time_input("기준 시작시각", value=default_time)
+# 2. 기준 시작/종료시각 선택 (07:00~07:00)
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    base_start_time = st.time_input("기준 시작시각", value=datetime.time(7, 0), key="start_time")
+with col2:
+    base_end_time = st.time_input("기준 종료시각", value=datetime.time(7, 0), key="end_time")
 
-# 기준 종료시각 (예: 07:00 다음날)
-end_time = st.sidebar.time_input("기준 종료시각", value=default_time)
+# 3. 현재 시각 (텍스트, 24시간제) - 예시 안내 포함
+now_time_str = st.sidebar.text_input("현재 시각 입력 (예: 17:32)", value=datetime.datetime.now().strftime("%H:%M"))
 
-# 오늘의 기준시각대
-today_start = datetime.datetime.combine(base_date, start_time)
-# 기준종료시각이 당일 7시와 같으면, 종료는 다음날 7시로 간주
-if end_time == start_time:
-    today_end = today_start + datetime.timedelta(days=1)
+# 4. datetime 변환 (예외 방지)
+try:
+    now_hour, now_minute = map(int, now_time_str.strip().split(":"))
+    now_dt = datetime.datetime.combine(base_date, datetime.time(now_hour, now_minute))
+except Exception:
+    st.error("현재 시각 형식이 올바르지 않습니다. (예: 11:20)")
+    now_dt = datetime.datetime.combine(base_date, datetime.time(7, 0))  # fallback 07:00
+
+today_start = datetime.datetime.combine(base_date, base_start_time)
+today_end = datetime.datetime.combine(base_date + datetime.timedelta(days=1 if base_end_time <= base_start_time else 0), base_end_time)
+
+# 경과 시간 계산 (기준 시작~현재시각, 24시 전환 자동, 음수면 0)
+if now_dt < today_start:
+    # (익일 07:00까지 계산 허용)
+    elapsed_minutes = ((now_dt + datetime.timedelta(days=1)) - today_start).total_seconds() / 60
 else:
-    today_end = datetime.datetime.combine(base_date, end_time)
-# 현재시각 직접입력 (예: 19:44)
-now_time = st.sidebar.time_input("현재 시각 입력", value=datetime.datetime.now().time())
-# 사용자가 입력한 현재시각 기준으로 now_datetime 설정
-now = datetime.datetime.combine(base_date, now_time)
-if now < today_start:
-    now = now + datetime.timedelta(days=1)  # 0~7시 입력시 익일로 보정
-
-# 경과분 자동 계산 (07:00 ~ 현재 입력시각)
-elapsed_minutes = (now - today_start).total_seconds() / 60
+    elapsed_minutes = (now_dt - today_start).total_seconds() / 60
 elapsed_minutes = max(min(elapsed_minutes, 1440), 0)
 
-st.info(f"기준일시: {today_start.strftime('%Y-%m-%d %H:%M')} ~ {today_end.strftime('%Y-%m-%d %H:%M')}")
-st.info(f"현재시각: {now.strftime('%Y-%m-%d %H:%M')} (경과분: {int(elapsed_minutes)}분)")
+# 📌 화면 상단 안내
+st.markdown(f"""
+- **기준일자:** {base_date.strftime('%Y-%m-%d')}
+- **기준시작:** {base_start_time.strftime('%H:%M')} / **기준종료:** {base_end_time.strftime('%H:%M')}
+- **현재 시각:** {now_time_str} / **경과시간:** {elapsed_minutes:.1f}분
+""")
 
 # ========================== 2부: 정상조업 입력부 ==========================
 st.sidebar.header("① 정상조업 기본입력")
