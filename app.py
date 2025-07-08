@@ -1,4 +1,4 @@
-import streamlit as st
+bimport streamlit as st
 import pandas as pd
 import datetime
 import matplotlib.pyplot as plt
@@ -338,23 +338,37 @@ st.dataframe(tap_history)
 csv_tap = tap_history.to_csv(index=False).encode('utf-8-sig')
 st.download_button("📥 Tap별 종료/슬래그기록 CSV", data=csv_tap, file_name="BlastTap_Tap_History.csv", mime='text/csv')
 
-# ------------------ 7부: 누적 조업 리포트 및 요약 ------------------
+# ------------------ 7부: 결과·추천·누적 리포트 ------------------
 
 st.markdown("---")
-st.header("📋 누적 조업 리포트 및 종합 요약")
+st.header("📋 누적 조업 리포트 및 AI 추천/진단")
 
-# 주요 요약 값 정리
+# --- AI 추천/진단 표시 ---
+st.subheader("🚦 AI 출선전략 및 조업진단")
+st.write(f"🔸 추천 비트경(Ø): {tap_diameter} mm")
+st.write(f"🔸 추천 차기 출선간격: {next_tap_interval}")
+st.write(f"🔸 선행 Tap 폐쇄Lap예상시간: {lead_lap_time:.1f} 분")
+st.write(f"🔸 AI 공취예상 잔여시간: {ai_gap_minutes:.1f} 분")
+st.write(f"🔸 AI 기반 Tf예상온도(°C): {Tf_predict:.1f} °C")
+st.write(f"🔸 조업상태: {status}")
+
+# --- 리포트 기록 dict ---
 record = {
     "기준시각": now.strftime('%Y-%m-%d %H:%M:%S'),
     "기준일자": base_date,
     "현재시각": current_time.strftime('%H:%M'),
     "예상일일생산량(t/day)": daily_expected_production,
-    "현재시각누적생산량(t)": expected_till_now,
-    "현재시각누적출선량(t)": total_realtime_output,
-    "현재시각 저선량(t)": residual_molten,
+    "현재누적생산량(t)": expected_till_now,
+    "현재누적출선량(t)": total_realtime_output,
+    "현재 저선량(t)": residual_molten,
     "저선율(%)": residual_rate,
     "AI 기반 Tf예상온도(°C)": Tf_predict,
+    "추천 비트경": tap_diameter,
+    "차기 출선간격": next_tap_interval,
+    "선행 Tap 폐쇄Lap예상시간": lead_lap_time,
+    "AI 공취예상시간": ai_gap_minutes,
     "조업상태": status,
+    # --- 주요 입력·실적 ---
     "종료된Tap수": completed_taps,
     "평균 Tap출선량(ton)": fixed_avg_tap_output,
     "평균 Tap출선시간(분)": fixed_avg_tap_time,
@@ -369,28 +383,107 @@ record = {
     "누적슬래그량(ton)": accumulated_slag
 }
 
-# 로그 세션에 추가
+# --- 누적 기록, 테이블, 다운로드 ---
 if 'log' not in st.session_state:
     st.session_state['log'] = []
 st.session_state['log'].append(record)
-
-# 500건 초과 시 oldest 삭제
 if len(st.session_state['log']) > 500:
     st.session_state['log'].pop(0)
-
 df_log = pd.DataFrame(st.session_state['log'])
 st.dataframe(df_log)
-
-# CSV 다운로드 버튼
 csv = df_log.to_csv(index=False).encode('utf-8-sig')
 st.download_button("📥 누적 리포트 CSV", data=csv, file_name="BlastTap_10.3_Log.csv", mime='text/csv')
 
-# =================== 안내 ===================
+# --- 안내 ---
 st.markdown("---")
 st.markdown("#### 🛠️ BlastTap 10.3 Pro — AI 기반 고로조업 통합 시스템")
-st.markdown("- 제작: 신동준 (개발지원: ChatGPT + Streamlit 기반)")
-st.markdown("- 업데이트일: 2025-06 최신반영")
-st.markdown("- 기능: 일일생산량 예측, 저선관리, 출선추적, 슬래그분리 등 통합 제공")
-st.info("💡 모든 조업 정보는 기준일/시간 기반 자동 집계, 실시간 데이터 반영 및 기록 관리.")
-st.success("📌 BlastTap 10.3 Pro는 현장 적용/업데이트 버전입니다. 건의/개선점은 GitHub 등으로 제출!")
+st.info("💡 AI 추천/진단, 결과, 실적, 조업상태가 모두 누적 리포트로 기록·다운로드 가능합니다.")
 
+# ------------------ 8부: 실시간 시각화(그래프·수지 추적) ------------------
+
+import matplotlib.pyplot as plt
+
+st.markdown("---")
+st.header("📊 실시간 용융물 수지 시각화 (누적 생산·출선·저선)")
+
+# 시간축 생성: 기준시각~현재시각 (예: 15분 단위)
+time_labels = list(range(0, int(elapsed_minutes)+1, 15))
+
+# 누적 생산량(예상) 시계열
+gen_series = []
+for t in time_labels:
+    prod = daily_expected_production * (t / 1440)
+    gen_series.append(prod)
+
+# 누적 출선량(실적) 시계열 (동일 시각까지 일일실시간누적배출량 반영)
+tap_series = [total_realtime_output] * len(time_labels)
+
+# 저선량(ton): 누적생산-누적출선
+residual_series = [max(g - total_realtime_output, 0) for g in gen_series]
+
+# Matplotlib 그래프
+plt.figure(figsize=(10, 5))
+plt.plot(time_labels, gen_series, label="누적 생산량 (ton)")
+plt.plot(time_labels, tap_series, label="누적 출선량 (ton)")
+plt.plot(time_labels, residual_series, label="저선량 (ton)")
+
+plt.xlabel("경과시간 (분, 07시 기준)")
+plt.ylabel("ton")
+plt.title("⏱️ 시간대별 누적 수지 실시간 시각화")
+plt.legend()
+plt.grid(True)
+st.pyplot(plt)
+
+st.caption("실시간 누적 생산/출선/저선량 추적(07시 기준 ~ 입력된 현재시각)")
+
+# ------------------ 9부: 누적 조업 리포트 기록 & 다운로드 ------------------
+
+st.markdown("---")
+st.header("📋 누적 조업 리포트 기록")
+
+# (1) 리포트 기록용 dict 생성
+report = {
+    "입력_기준일자": base_date.strftime('%Y-%m-%d'),
+    "입력_기준시각": selected_now.strftime('%H:%M'),
+    "예상일일생산량(t/day)": daily_expected_production,
+    "현재시각_누적예상생산량(t)": current_expected_production,
+    "현재시각_누적출선량(t)": total_realtime_output,
+    "현재시각_저선량(t)": residual_molten,
+    "저선율(%)": residual_rate,
+    "종료Tap수": closed_tap_count,
+    "평균Tap출선시간(분)": avg_tap_time,
+    "평균Tap출선속도(t/min)": avg_tap_speed,
+    "평균Tap출선량(t)": avg_tap_output,
+    "종료Tap출선량(t)": closed_tap_output,
+    "선행출선시간(분)": lead_time,
+    "선행출선속도(t/min)": lead_speed,
+    "선행출선량(ton)": lead_output,
+    "후행출선시간(분)": follow_time,
+    "후행출선속도(t/min)": follow_speed,
+    "후행출선량(ton)": follow_output,
+    "AI_Tf예상온도(°C)": Tf_predict,
+    "누적슬래그량(t)": accumulated_slag,
+    "조업상태": status,
+    "추천비트경": recommended_tap_diameter,
+    "추천출선간격": recommended_tap_interval,
+    "선행폐쇄예상Lap(분)": lead_closure_lap,
+    "Ai공취예상잔여시간(분)": ai_gap_minutes,
+    "실시간기준경과시간(분)": elapsed_minutes,
+}
+
+# (2) 세션 로그에 추가 (중복 없이 최신 500건 유지)
+if 'log' not in st.session_state:
+    st.session_state['log'] = []
+st.session_state['log'].append(report)
+if len(st.session_state['log']) > 500:
+    st.session_state['log'].pop(0)
+
+# (3) 데이터프레임 테이블 표시
+df = pd.DataFrame(st.session_state['log'])
+st.dataframe(df)
+
+# (4) CSV 다운로드 버튼
+csv = df.to_csv(index=False).encode('utf-8-sig')
+st.download_button("📥 CSV 다운로드", data=csv, file_name="BlastTap_10.3_Log.csv", mime='text/csv')
+
+st.info("💡 모든 리포트는 07시 기준 일일 누적으로 기록되며, 입력값 변경시 즉시 반영됩니다.")
