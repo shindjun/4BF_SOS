@@ -1,310 +1,375 @@
 import streamlit as st
+import pandas as pd
 import datetime
 import matplotlib.pyplot as plt
+import matplotlib
+import platform
 
-# -- 세션에 고정시각 변수 선언 --
-if 'fixed_now_time' not in st.session_state:
-    st.session_state['fixed_now_time'] = datetime.datetime.now().time()
-if 'lock_now_time' not in st.session_state:
-    st.session_state['lock_now_time'] = False
-
-st.sidebar.header("기준일자 및 현재시각 입력")
-
-# 기준일자 & Tap 시작 기준시각
-base_date = st.sidebar.date_input("기준일자 (Tap 기준)", value=datetime.date.today())
-day_start_time = st.sidebar.time_input("Tap 시작 기준시각", value=datetime.time(7, 0))
-
-# --- 현재시각 입력과 고정 체크박스 ---
-user_now_time = st.sidebar.time_input("현재 시각 (예: 17:00)", value=st.session_state['fixed_now_time'])
-lock_now_time = st.sidebar.checkbox("입력한 현재시각 고정", value=st.session_state['lock_now_time'])
-
-if lock_now_time:
-    # 고정모드: 입력값이 변경될 때만 업데이트
-    if user_now_time != st.session_state['fixed_now_time']:
-        st.session_state['fixed_now_time'] = user_now_time
-    st.session_state['lock_now_time'] = True
-    now_time = st.session_state['fixed_now_time']
+# 한글 폰트 설정
+if platform.system() == "Windows":
+    matplotlib.rcParams['font.family'] = 'Malgun Gothic'
 else:
-    # 해제모드: 매번 최신 입력값 사용
-    st.session_state['fixed_now_time'] = user_now_time
-    st.session_state['lock_now_time'] = False
-    now_time = user_now_time
+    matplotlib.rcParams['font.family'] = 'NanumGothic'
+matplotlib.rcParams['axes.unicode_minus'] = False
 
-# 기준일시/현재시각 계산
-base_datetime = datetime.datetime.combine(base_date, day_start_time)
-now_datetime = datetime.datetime.combine(base_date, now_time)
-if now_time < day_start_time:
-    now_datetime += datetime.timedelta(days=1)
-elapsed_minutes = (now_datetime - base_datetime).total_seconds() / 60
-elapsed_minutes = max(min(elapsed_minutes, 1440), 0)
+st.set_page_config(page_title="BlastTap 10.3 Pro — AI 조업엔진", layout="wide")
+st.title("🔥 BlastTap 10.3 Pro — AI 기반 고로조업 실시간 통합관리")
 
-# 안내문
-st.write(f"**기준일시:** {base_datetime.strftime('%Y-%m-%d %H:%M')} ~ {(base_datetime + datetime.timedelta(days=1)).strftime('%Y-%m-%d %H:%M')}")
-st.write(f"**현재시각:** {now_datetime.strftime('%Y-%m-%d %H:%M')}")
-st.write(f"**경과분:** {elapsed_minutes:.1f}분 (현재시각 체크 고정: {'ON' if lock_now_time else 'OFF'})")
+# ============ 1부: 기준시간 입력 ===============
+st.sidebar.header("🕒 현재 시각 입력")
+base_date = st.sidebar.date_input("기준일자", value=datetime.date.today())
+base_start = st.sidebar.text_input("기준 시작시각", value="07:00")
+base_end = st.sidebar.text_input("기준 종료시각", value="07:00")
+cur_time = st.sidebar.text_input("현재 시각 입력 (예: 17:32)", value=datetime.datetime.now().strftime("%H:%M"))
 
-# --------------------- 2부: 정상조업 입력 ---------------------
+# 경과시간(분) 계산
+try:
+    start_hour, start_min = map(int, base_start.split(":"))
+    cur_hour, cur_min = map(int, cur_time.split(":"))
+    base_start_dt = datetime.datetime.combine(base_date, datetime.time(start_hour, start_min))
+    cur_dt = datetime.datetime.combine(base_date, datetime.time(cur_hour, cur_min))
+    # 24시 교대 고려
+    if cur_dt < base_start_dt:
+        cur_dt += datetime.timedelta(days=1)
+    elapsed_minutes = (cur_dt - base_start_dt).total_seconds() / 60
+except Exception as e:
+    elapsed_minutes = 0
+
+st.sidebar.markdown(f"**경과시간:** {elapsed_minutes:.1f}분")
+
+# =========== 2부: 정상조업 기본입력 ================
 st.sidebar.header("① 정상조업 기본입력")
-
-# 장입속도
 charging_time_per_charge = st.sidebar.number_input("1Charge 장입시간 (분)", value=11.0)
-charge_rate = 60 / charging_time_per_charge if charging_time_per_charge > 0 else 0
-
-# 장입량
 ore_per_charge = st.sidebar.number_input("Ore 장입량 (ton/ch)", value=165.0)
 coke_per_charge = st.sidebar.number_input("Coke 장입량 (ton/ch)", value=33.0)
 nut_coke_kg = st.sidebar.number_input("N.C (너트코크) 장입량 (kg)", value=800.0)
-
-# O/C 자동표시 (계산)
 if coke_per_charge > 0:
-    ore_coke_ratio = ore_per_charge / coke_per_charge
+    oc_ratio = ore_per_charge / coke_per_charge
 else:
-    ore_coke_ratio = 0
-st.sidebar.markdown(f"**O/C 비율:** {ore_coke_ratio:.2f}")
+    oc_ratio = 0
+st.sidebar.markdown(f"**O/C 비율:** {oc_ratio:.2f}")
 
-# 철광석 성분 (슬래그비율·기본환원율은 자동표시)
+# T.Fe, 슬래그비율, 환원율(자동계산 or 입력값 병행)
 tfe_percent = st.sidebar.number_input("T.Fe 함량 (%)", value=58.0)
+auto_slag_ratio = ore_per_charge / coke_per_charge * 0.15  # 예시 공식, 실측공식으로 대체 가능
+slag_ratio = st.sidebar.number_input("슬래그 비율 (용선:슬래그)", value=round(auto_slag_ratio, 2))
+auto_red_eff = 1 + (tfe_percent - 55) * 0.01
+reduction_efficiency = st.sidebar.number_input("기본 환원율", value=round(auto_red_eff, 3))
 
-# 슬래그비율 자동(예: 2.25), 기본환원율 자동(예: 1.0)
-auto_slag_ratio = round(ore_coke_ratio * 0.15, 2)   # 예시 공식(원하는 값 조정)
-auto_reduction_eff = round(0.8 + ore_coke_ratio * 0.02, 3)  # 예시 공식
-st.sidebar.markdown(f"**[자동] 슬래그 비율:** {auto_slag_ratio:.2f}")
-st.sidebar.markdown(f"**[자동] 기본 환원율:** {auto_reduction_eff:.3f}")
-
-slag_ratio = auto_slag_ratio
-reduction_efficiency = auto_reduction_eff
-
-# 용해능력
 melting_capacity = st.sidebar.number_input("용해능력 (°CKN m²/T-P)", value=2800)
-
-# 송풍 및 산소
 blast_volume = st.sidebar.number_input("송풍량 (Nm3/min)", value=7200.0)
 oxygen_volume = st.sidebar.number_input("산소부화량 (Nm3/hr)", value=36961.0)
 oxygen_enrichment_manual = st.sidebar.number_input("산소부화율 수동입력 (%)", value=6.0)
-
-# 조습 및 미분탄
 humidification = st.sidebar.number_input("조습량 (g/Nm3)", value=14.0)
 pci_rate = st.sidebar.number_input("미분탄 취입량 (kg/thm)", value=170)
-
-# 압력 및 온도
-top_pressure = st.sidebar.number_input("노정압 (kg/cm2)", value=2.5)
-blast_pressure = st.sidebar.number_input("풍압 (kg/cm2)", value=3.9)
+top_pressure = st.sidebar.number_input("노정압 (kg/cm²)", value=2.5)
+blast_pressure = st.sidebar.number_input("풍압 (kg/cm²)", value=3.9)
 hot_blast_temp = st.sidebar.number_input("풍온 (°C)", value=1180)
 measured_temp = st.sidebar.number_input("실측 용선온도 (°C)", value=1515.0)
-
-# 송풍 원단위 (Nm3/t)
 wind_unit = st.sidebar.number_input("송풍원단위 (Nm3/t)", value=1189.0)
 
-# --------------------- 3부: 비상조업/감풍·휴풍 보정입력 ---------------------
-st.sidebar.header("② 비상조업/감풍·휴풍 보정입력")
+# ========== 3부: 종료된 Tap별 출선 추적 및 슬래그분리 입력 ==========
+st.sidebar.header("② 출선 추적(종료Tap/선행/후행)")
+tap_count = st.sidebar.number_input("종료된 Tap 수", min_value=0, step=1, value=5)
+fixed_avg_tap_time = st.sidebar.number_input("평균 TAP당 출선소요시간(분)", value=298)
+fixed_avg_tap_speed = st.sidebar.number_input("평균 TAP당 출선속도(ton/min)", value=4.62)
+fixed_avg_tap_output = st.sidebar.number_input("평균 TAP당 출선량(ton)", value=1120.0)
+fixed_avg_slag_time = st.sidebar.number_input("Tap당 슬래그 분리시간(분)", value=32.0)
+tap_total_output = st.sidebar.number_input("종료된 Tap 출선량(실측값, ton, 미입력시 계산값 사용)", value=0.0)
 
-# 비상조업 체크박스
-abnormal_active = st.sidebar.checkbox("비상조업 보정 적용", value=False, key="abnormal_active")
-if abnormal_active:
-    abnormal_start_time = st.sidebar.time_input("비상 시작시각", value=datetime.time(10, 0), key="abnormal_start_time")
-    abnormal_end_time = st.sidebar.time_input("비상 종료시각", value=datetime.time(13, 0), key="abnormal_end_time")
+# Tap별 상세 입력(선택): 슬래그 분리시간 포함 예시(옵션)
+tap_slag_times = []
+for i in range(int(tap_count)):
+    slag_time = st.sidebar.number_input(f"Tap#{i+1} 슬래그 분리시간(분)", value=fixed_avg_slag_time, key=f"tap_slag_{i}")
+    tap_slag_times.append(slag_time)
 
-    abnormal_charging_delay = st.sidebar.number_input("비상 장입지연 누적시간 (분)", value=0, key="abnormal_charging_delay")
-    abnormal_total_melting_delay = st.sidebar.number_input("비상 체류시간 보정 (분)", value=300, key="abnormal_total_melting_delay")
+# Tap 총 출선량 자동계산
+if tap_total_output == 0.0:
+    tap_total_output = tap_count * fixed_avg_tap_output
 
-    abnormal_blast_volume = st.sidebar.number_input("비상 송풍량 (Nm3/min)", value=blast_volume, key="abnormal_blast_volume")
-    abnormal_oxygen_volume = st.sidebar.number_input("비상 산소부화량 (Nm3/hr)", value=oxygen_volume, key="abnormal_oxygen_volume")
-    abnormal_oxygen_enrichment = st.sidebar.number_input("비상 산소부화율 (%)", value=oxygen_enrichment_manual, key="abnormal_oxygen_enrichment")
-    abnormal_humidification = st.sidebar.number_input("비상 조습량 (g/Nm3)", value=humidification, key="abnormal_humidification")
-    abnormal_pci_rate = st.sidebar.number_input("비상 미분탄 (kg/thm)", value=pci_rate, key="abnormal_pci_rate")
-    abnormal_wind_unit = st.sidebar.number_input("비상 송풍원단위 (Nm3/t)", value=wind_unit, key="abnormal_wind_unit")
+# ------------------- 2부: 슬래그 분리시간 자동통계 --------------------
+import numpy as np
 
-# 감풍·휴풍 체크박스
-reduction_active = st.sidebar.checkbox("감풍·휴풍 보정 적용", value=False, key="reduction_active")
-if reduction_active:
-    reduction_start_time = st.sidebar.time_input("감풍 시작시각", value=datetime.time(15, 0), key="reduction_start_time")
-    reduction_end_time = st.sidebar.time_input("감풍 종료시각", value=datetime.time(18, 0), key="reduction_end_time")
+# 슬래그 분리시간 Tap별 입력값: tap_slag_times (1부에서 생성)
+slag_times_array = np.array(tap_slag_times)
+slag_avg = np.mean(slag_times_array)
+slag_max = np.max(slag_times_array)
+slag_min = np.min(slag_times_array)
+slag_std = np.std(slag_times_array)
 
-    reduction_charging_delay = st.sidebar.number_input("감풍 장입지연 누적시간 (분)", value=0, key="reduction_charging_delay")
-    reduction_blast_volume = st.sidebar.number_input("감풍 송풍량 (Nm3/min)", value=blast_volume, key="reduction_blast_volume")
-    reduction_oxygen_volume = st.sidebar.number_input("감풍 산소부화량 (Nm3/hr)", value=oxygen_volume, key="reduction_oxygen_volume")
-    reduction_oxygen_enrichment = st.sidebar.number_input("감풍 산소부화율 (%)", value=oxygen_enrichment_manual, key="reduction_oxygen_enrichment")
-    reduction_humidification = st.sidebar.number_input("감풍 조습량 (g/Nm3)", value=humidification, key="reduction_humidification")
-    reduction_pci_rate = st.sidebar.number_input("감풍 미분탄 (kg/thm)", value=pci_rate, key="reduction_pci_rate")
-    reduction_wind_unit = st.sidebar.number_input("감풍 송풍원단위 (Nm3/t)", value=wind_unit, key="reduction_wind_unit")
+# 메인 화면에 슬래그 분리시간 통계 결과 표시
+st.subheader("⏳ Tap별 슬래그 분리시간 통계")
+st.write(f"평균 슬래그 분리시간: **{slag_avg:.1f}분**")
+st.write(f"최대 슬래그 분리시간: **{slag_max:.1f}분**")
+st.write(f"최소 슬래그 분리시간: **{slag_min:.1f}분**")
+st.write(f"표준편차: **{slag_std:.2f}분**")
 
-# --------------------- 4부: 출선관리/추적 입력 ---------------------
-st.sidebar.header("③ 출선관리/추적 입력")
+# Tap별 상세 리스트 표
+slag_df = pd.DataFrame({
+    "Tap No": [f"Tap#{i+1}" for i in range(int(tap_count))],
+    "슬래그 분리시간(분)": tap_slag_times
+})
+st.dataframe(slag_df)
 
-with st.sidebar.expander("종료된 Tap 정보 입력", expanded=True):
-    tap_count = st.number_input("종료된 Tap 수", value=0, step=1, min_value=0, key="tap_count")
-    fixed_avg_tap_time = st.number_input("평균 TAP당 출선소요시간(분)", value=252.0, key="fixed_avg_tap_time")
-    fixed_avg_tap_speed = st.number_input("평균 TAP당 출선속도(ton/min)", value=4.5, key="fixed_avg_tap_speed")
-    fixed_avg_tap_output = st.number_input("평균 TAP당 출선량(ton)", value=1200.0, key="fixed_avg_tap_output")
-    # 자동산출 (실측입력 우선, 없으면 자동계산)
-    closed_tap_weight_auto = tap_count * fixed_avg_tap_output
+# 차트 시각화(옵션)
+plt.figure(figsize=(7, 2.5))
+plt.bar(slag_df["Tap No"], slag_df["슬래그 분리시간(분)"])
+plt.title("Tap별 슬래그 분리시간")
+plt.ylabel("분")
+st.pyplot(plt)
 
-# 실측값(수동)과 자동값 중 실측 우선
-closed_tap_weight = st.sidebar.number_input("종료된 Tap 출선량(ton, 실측입력시 우선)", value=closed_tap_weight_auto, key="closed_tap_weight")
+# ------------------ 3부: Tap별 출선 상세입력 및 리포트 저장 ------------------
 
-with st.sidebar.expander("선행/후행 실시간 출선정보", expanded=True):
-    # 선행/후행 출선 실측
-    lead_elapsed_time = st.number_input("선행 출선시간(분)", value=0.0, key="lead_elapsed_time")
-    lead_speed = st.number_input("선행 출선속도(ton/min)", value=fixed_avg_tap_speed, key="lead_speed")
-    lead_output_ai = lead_elapsed_time * lead_speed
-    lead_output_measured = st.number_input("선행 출선량(ton, 실측값 입력시 우선)", value=lead_output_ai, key="lead_output_measured")
+st.sidebar.markdown("---")
+st.sidebar.header("💧 Tap별 출선 상세입력")
 
-    follow_elapsed_time = st.number_input("후행 출선시간(분)", value=0.0, key="follow_elapsed_time")
-    follow_speed = st.number_input("후행 출선속도(ton/min)", value=fixed_avg_tap_speed, key="follow_speed")
-    follow_output_ai = follow_elapsed_time * follow_speed
-    follow_output_measured = st.number_input("후행 출선량(ton, 실측값 입력시 우선)", value=follow_output_ai, key="follow_output_measured")
+# Tap 수 입력 (슬래그 분리시간도 이 Tap수와 연동)
+tap_count = st.sidebar.number_input("종료된 Tap 수", min_value=1, step=1, value=3)
+tap_numbers = [f"{i+1}" for i in range(int(tap_count))]
 
-# 실시간 누적배출량(자동계산)
-realtime_tap_weight_auto = closed_tap_weight + lead_output_measured + follow_output_measured
-realtime_tap_weight = st.sidebar.number_input(
-    "일일 실시간 누적배출량(ton, 실측값 입력시 우선)", value=realtime_tap_weight_auto, key="realtime_tap_weight"
-)
+# Tap별 입력: 비트, 출선시간(분), 출선속도(ton/min), 슬래그분리시간(분)
+tap_bits = []
+tap_times = []
+tap_speeds = []
+tap_slag_times = []
 
-# 누적 출선량 계산(실측 우선)
-total_tapped_hot_metal = realtime_tap_weight
+for i in range(int(tap_count)):
+    with st.sidebar.expander(f"Tap #{i+1}"):
+        bit = st.number_input(f"  출선비트 (mm) [Tap#{i+1}]", value=45, key=f'bit_{i}')
+        t_time = st.number_input(f"  출선시간 (분) [Tap#{i+1}]", value=150.0, key=f'time_{i}')
+        t_speed = st.number_input(f"  출선속도 (ton/min) [Tap#{i+1}]", value=4.5, key=f'speed_{i}')
+        s_time = st.number_input(f"  슬래그 분리시간 (분) [Tap#{i+1}]", value=20.0, key=f'slag_{i}')
+        tap_bits.append(bit)
+        tap_times.append(t_time)
+        tap_speeds.append(t_speed)
+        tap_slag_times.append(s_time)
 
-# ==================== 5부: 주요 산출/수지/진단/AI 추천 ====================
+# Tap별 정보 테이블 생성
+tap_detail_df = pd.DataFrame({
+    "Tap No": tap_numbers,
+    "출선비트(mm)": tap_bits,
+    "출선시간(분)": tap_times,
+    "출선속도(ton/min)": tap_speeds,
+    "슬래그 분리시간(분)": tap_slag_times
+})
 
-st.header("④ 수지/AI 진단 및 추천")
+# Tap별 상세 데이터 리포트 테이블 메인 화면 표시
+st.subheader("📑 Tap별 상세 출선 기록")
+st.dataframe(tap_detail_df)
 
-# 1. 현재시각 기준 누적예상생산량 (송풍기준)
-elapsed_ratio = elapsed_minutes / 1440   # 일 단위 비율
-wind_air_day = (blast_volume * 1440) + (oxygen_volume * 24 / 0.21)
-daily_expected_production = wind_air_day / wind_unit
-expected_till_now = daily_expected_production * elapsed_ratio
+# CSV 저장(선택)
+tap_csv = tap_detail_df.to_csv(index=False).encode('utf-8-sig')
+st.download_button("Tap별 상세기록 CSV 다운로드", data=tap_csv, file_name="Tap_Detail_Report.csv", mime='text/csv')
 
-# 2. 누적 출선량 (종료된 Tap+선행+후행+실시간)
-total_tapped_hot_metal = realtime_tap_weight
+# Tap별 슬래그 분리시간 자동통계 (앞 2부 통계와 연동)
+slag_times_array = np.array(tap_slag_times)
+slag_avg = np.mean(slag_times_array)
+slag_max = np.max(slag_times_array)
+slag_min = np.min(slag_times_array)
+slag_std = np.std(slag_times_array)
 
-# 3. 저선량(ton) = 현재시각 기준 누적예상생산량 - 누적 출선량
-residual_molten = expected_till_now - total_tapped_hot_metal
-residual_molten = max(residual_molten, 0)
-residual_rate = (residual_molten / expected_till_now) * 100 if expected_till_now > 0 else 0
+st.write(f"**Tap별 평균 슬래그 분리시간**: {slag_avg:.1f}분 / "
+         f"최대: {slag_max:.1f}분 / 최소: {slag_min:.1f}분 / 표준편차: {slag_std:.2f}분")
 
-# 4. 슬래그 자동계산 (누적출선 × 슬래그비율)
-slag_ratio_auto = 0.33
-accumulated_slag = total_tapped_hot_metal * slag_ratio_auto
+# ------------------ 4부: 누적 조업 리포트 및 대시보드 시각화 ------------------
 
-# 5. AI 기반 용선온도 예측 (Tf)
-pci_ton_hr = pci_rate * daily_expected_production / 1000
+st.markdown("---")
+st.header("📊 누적 조업 리포트 및 대시보드")
+
+# 07시~현재까지 Tap별, 전체 출선 누적 데이터 요약
+st.subheader("✅ 07시 기준 누적 Tap별 출선 데이터")
+
+# Tap별 누적 출선량 (tap_times * tap_speeds)
+tap_outputs = [round(a * b, 1) for a, b in zip(tap_times, tap_speeds)]
+tap_detail_df["Tap별 출선량(ton)"] = tap_outputs
+
+# Tap별 누적 합계
+total_tap_output = sum(tap_outputs)
+
+st.write(f"**누적 Tap별 출선량 합계**: {total_tap_output:.1f} ton")
+st.dataframe(tap_detail_df)
+
+# 전체 일일 실시간 누적 배출량 = 종료Tap수×평균tap당출선량 + 선행/후행출선량
+if "실측 일일 실시간 누적 배출량" in st.session_state:
+    total_realtime_output = st.session_state["실측 일일 실시간 누적 배출량"]
+else:
+    total_realtime_output = total_tap_output + lead_tap_weight + follow_tap_weight
+
+# 실시간 대시보드 통계
+st.subheader("🟢 실시간 조업 현황 요약")
+st.write(f"**실시간 누적 출선량**: {total_realtime_output:.1f} ton")
+st.write(f"**현재시각 누적 예상생산량**: {expected_till_now:.1f} ton")
+st.write(f"**현재시각 기준 저선량**: {expected_till_now - total_realtime_output:.1f} ton")
+
+# Tap별 슬래그 분리시간 통계 시각화
+st.subheader("⏱️ Tap별 슬래그 분리시간 통계 (분)")
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.bar(tap_numbers, tap_slag_times, color="#96b6e6")
+ax.set_xlabel("Tap No")
+ax.set_ylabel("슬래그 분리시간 (분)")
+ax.set_title("Tap별 슬래그 분리시간")
+for i, v in enumerate(tap_slag_times):
+    ax.text(i, v + 1, f"{v:.1f}", ha='center', va='bottom')
+st.pyplot(fig)
+
+# 전체 리포트 누적 저장 (Tap 정보 포함)
+if "full_report_log" not in st.session_state:
+    st.session_state["full_report_log"] = []
+full_report_record = {
+    "날짜": pd.Timestamp.now().strftime("%Y-%m-%d"),
+    "Tap별 출선량": tap_outputs,
+    "누적 Tap합계": total_tap_output,
+    "실시간 누적 출선량": total_realtime_output,
+    "현재시각 누적생산량": expected_till_now,
+    "현재시각 저선량": expected_till_now - total_realtime_output,
+    "슬래그 분리시간(평균)": slag_avg
+}
+st.session_state["full_report_log"].append(full_report_record)
+
+# 누적 테이블 및 다운로드
+full_report_df = pd.DataFrame(st.session_state["full_report_log"])
+st.dataframe(full_report_df)
+csv = full_report_df.to_csv(index=False).encode("utf-8-sig")
+st.download_button("누적조업 리포트 CSV 다운로드", data=csv, file_name="Full_BlastTap_Report.csv", mime="text/csv")
+
+# ------------------ 5부: AI 기반 용선온도 예측, 출선전략, 공취예상 ------------------
+
+st.markdown("---")
+st.header("🤖 AI 기반 예측·추천")
+
+# 1) AI 기반 Tf(용선온도) 예측 (참고지수)
 try:
-    tf_predict = (
+    # 송풍/산소/풍온/PCI/실측온도 등 활용한 보정식
+    pci_ton_hr = pci_rate * (daily_expected_production / 1000)
+    Tf_ai = (
         (hot_blast_temp * 0.836)
         + ((oxygen_volume / (60 * blast_volume)) * 4973)
         - (hot_blast_temp * 0.6)
-        - ((pci_ton_hr * 1000000) / (60 * blast_volume) * 0.0015)
+        - ((pci_ton_hr * 1_000_000) / (60 * blast_volume) * 0.0015)
         + 1559
     )
 except Exception:
-    tf_predict = 0
-tf_predict = max(tf_predict, 1200)
+    Tf_ai = None
 
-# 6. 출선전략: 추천 비트경·차기출선간격(저선기준)
-if residual_molten < 100 and residual_rate < 5:
-    tap_diameter = 43
-elif residual_molten < 150 and residual_rate < 7:
-    tap_diameter = 45
-else:
-    tap_diameter = 48
+Tf_ai = max(Tf_ai, 1200) if Tf_ai is not None else None
+st.subheader("AI 기반 Tf예상온도 (°C, 참고지수)")
+st.write(f"{Tf_ai:.1f}" if Tf_ai else "산출불가")
 
-if residual_rate < 5:
+# 2) 비트경/출선전략 추천
+st.subheader("🦾 출선전략 & AI 추천")
+# 저선량 및 출선율에 따라 추천값 산출
+if (expected_till_now - total_realtime_output) < 100:
+    recommended_tap_dia = 43
     next_tap_interval = "15~20분"
-elif residual_rate < 9:
+elif (expected_till_now - total_realtime_output) < 150:
+    recommended_tap_dia = 45
     next_tap_interval = "10~15분"
-elif residual_rate < 12:
-    next_tap_interval = "5~10분"
 else:
-    next_tap_interval = "즉시 (0~5분)"
+    recommended_tap_dia = 48
+    next_tap_interval = "즉시(0~5분)"
 
-# 7. 선행 폐쇄예상Lap시간 (후행 시작 후 150분 도달 시)
-if lead_elapsed_time > 0 and follow_elapsed_time > 0:
-    lap_time = max(150 - follow_elapsed_time, 0)
+st.write(f"추천 비트경: Ø{recommended_tap_dia}")
+st.write(f"추천 차기 출선간격: {next_tap_interval}")
+
+# 3) 선행 출선 폐쇄예상 Lap 시간 (공취예상시간)
+st.subheader("⏱️ 선행 출선 폐쇄예상 Lap 시간")
+# (후행 출선 시작 후 150분 경과시점 → 선행 Tap 폐쇄권고)
+if lead_time > 0 and follow_time > 0:
+    closure_lap = max(lead_time - (follow_time + 150), 0)
+    closure_lap_str = f"{closure_lap:.1f}분 (예상)" if closure_lap > 0 else "즉시 폐쇄권고"
 else:
-    lap_time = 0
+    closure_lap_str = "입력값 필요"
+st.write(f"선행 출선구 폐쇄예상 Lap 시간: {closure_lap_str}")
 
-# 8. AI공취예상 잔여시간 (선행 목표출선량-현재출선량/출선속도)
-lead_target = fixed_avg_tap_output
-lead_remain = max(lead_target - lead_output_measured, 0)
-ai_gap_minutes = lead_remain / lead_speed if lead_speed > 0 else 0
+# 4) 출선/공취 관리 종합 현황표
+st.subheader("📑 출선·공취 관리 종합 요약")
+st.write(f"""
+- **Tap평균 출선량**: {fixed_avg_tap_output:.1f} ton
+- **평균 TAP당 출선소요시간**: {fixed_avg_tap_time:.1f}분
+- **평균 TAP당 출선속도**: {fixed_avg_tap_speed:.2f} ton/min
+- **선행 출선시간/속도/실측출선량**: {lead_time}분 / {lead_speed}t/m / {lead_tap_weight}ton
+- **후행 출선시간/속도/실측출선량**: {follow_time}분 / {follow_speed}t/m / {follow_tap_weight}ton
+""")
 
-# 9. 진단 경보판
-if residual_molten >= 200:
-    status = "🔴 저선 위험 (비상)"
-elif residual_molten >= 150:
-    status = "🟠 저선 과다 누적"
-elif residual_molten >= 100:
-    status = "🟡 저선 관리 권고"
-else:
-    status = "✅ 정상 운영"
+# ------------------ 6부: 실시간 수지 시각화 및 Tap별 이력 ------------------
 
-# =================== 주요 결과표시 ====================
-st.subheader("💡 생산·출선·진단·AI추천")
+import matplotlib.pyplot as plt
 
-st.write(f"예상 일일생산량(송풍기준): {daily_expected_production:.1f} ton/day")
-st.write(f"현재시각 기준 누적 예상생산량: {expected_till_now:.1f} ton")
-st.write(f"현재시각 기준 누적 출선량: {total_tapped_hot_metal:.1f} ton")
-st.write(f"현재시각 기준 저선량: {residual_molten:.1f} ton ({residual_rate:.2f}%)")
-st.write(f"누적 슬래그량(자동): {accumulated_slag:.1f} ton")
-st.write(f"AI 기반 Tf예상온도(°C, 참고지수): {tf_predict:.1f}")
+st.markdown("---")
+st.header("📊 실시간 누적 생산·출선·저선량 시각화")
 
-st.write(f"추천 비트경: Ø{tap_diameter}")
-st.write(f"차기 출선간격 추천: {next_tap_interval}")
-st.write(f"선행 폐쇄예상 Lap시간(분): {lap_time:.1f}")
-st.write(f"AI 공취예상 잔여시간(분): {ai_gap_minutes:.1f}")
-st.write(f"조업상태 진단: {status}")
-
-# ======================= 6부: 실시간 수지 시각화 =======================
-st.subheader("📊 실시간 용융물 수지 시각화")
-
-# 시계열 시간축(예: 15분 단위)
+# 시간축 생성 (예: 15분 단위)
 time_labels = list(range(0, int(elapsed_minutes) + 1, 15))
 
-# 누적 생산량 시계열 (예상)
-gen_series = []
-for t in time_labels:
-    prod = daily_expected_production * (t / 1440)
-    gen_series.append(prod)
+# 누적 생산량(예상치) 시계열
+gen_series = [daily_expected_production * (t / 1440) for t in time_labels]
+# 누적 출선량(실측 누적배출량) 시계열
+tap_series = [total_realtime_output] * len(time_labels)
+# 저선량(예상 생산 - 누적 출선) 시계열
+residual_series = [max(g - total_realtime_output, 0) for g in gen_series]
 
-# 누적 출선량 시계열 (현재시각까지 실측 출선량은 변하지 않음)
-tap_series = [total_tapped_hot_metal] * len(time_labels)
-
-# 저선량 시계열 (예상 생산 - 출선)
-residual_series = [max(g - total_tapped_hot_metal, 0) for g in gen_series]
-
-# 플롯
 plt.figure(figsize=(10, 5))
-plt.plot(time_labels, gen_series, label="누적 생산량 (ton)")
-plt.plot(time_labels, tap_series, label="누적 출선량 (ton)")
-plt.plot(time_labels, residual_series, label="저선량 (ton)")
+plt.plot(time_labels, gen_series, label="누적 생산량(ton)")
+plt.plot(time_labels, tap_series, label="누적 출선량(ton)")
+plt.plot(time_labels, residual_series, label="저선량(ton)")
 plt.xlabel("경과시간 (분)")
 plt.ylabel("ton")
-plt.title("⏱️ 시간대별 누적 수지 시각화")
+plt.title("시간대별 누적 생산/출선/저선량")
 plt.legend()
 plt.grid(True)
 st.pyplot(plt)
 
-# ======================= 7부: 누적 리포트 기록 =======================
-st.subheader("📋 누적 조업 리포트 기록")
+# 누적 Tap별 출선 이력, 비트, 시간, 속도, 슬래그분리시간 등 기록표
+st.subheader("📋 Tap별 종료이력·슬래그분리 기록")
 
-# 리포트 항목 기록용 dict
+# 예시용 DataFrame 생성 (실제 적용시 DB/입력 연동 필요)
+tap_history = pd.DataFrame({
+    "Tap No.": list(range(1, int(completed_taps)+1)),
+    "출선비트경": [recommended_tap_dia]*int(completed_taps),
+    "출선소요시간(분)": [fixed_avg_tap_time]*int(completed_taps),
+    "평균출선속도(t/m)": [fixed_avg_tap_speed]*int(completed_taps),
+    "Tap별출선량(ton)": [fixed_avg_tap_output]*int(completed_taps),
+    "Tap별슬래그분리(분)": [fixed_avg_tap_time * 0.12]*int(completed_taps)  # 예: 전체 출선시간의 12% 소요 가정
+})
+
+st.dataframe(tap_history)
+
+# CSV 다운로드 기능
+csv_tap = tap_history.to_csv(index=False).encode('utf-8-sig')
+st.download_button("📥 Tap별 종료/슬래그기록 CSV", data=csv_tap, file_name="BlastTap_Tap_History.csv", mime='text/csv')
+
+# ------------------ 7부: 누적 조업 리포트 및 요약 ------------------
+
+st.markdown("---")
+st.header("📋 누적 조업 리포트 및 종합 요약")
+
+# 주요 요약 값 정리
 record = {
     "기준시각": now.strftime('%Y-%m-%d %H:%M:%S'),
-    "일일예상생산량(t/day)": daily_expected_production,
-    "현재시각기준예상생산량(t)": expected_till_now,
-    "현재시각기준출선량(t)": total_tapped_hot_metal,
-    "현재저선량(t)": residual_molten,
+    "기준일자": base_date,
+    "현재시각": current_time.strftime('%H:%M'),
+    "예상일일생산량(t/day)": daily_expected_production,
+    "현재시각누적생산량(t)": expected_till_now,
+    "현재시각누적출선량(t)": total_realtime_output,
+    "현재시각 저선량(t)": residual_molten,
     "저선율(%)": residual_rate,
-    "슬래그량(t)": accumulated_slag,
-    "AI기반Tf예상온도": tf_predict,
-    "추천비트경": tap_diameter,
-    "추천출선간격": next_tap_interval,
-    "Lap예상(분)": lap_time,
-    "AI공취잔여시간(분)": ai_gap_minutes,
+    "AI 기반 Tf예상온도(°C)": Tf_predict,
     "조업상태": status,
-    "현재경과시간(min)": elapsed_minutes
+    "종료된Tap수": completed_taps,
+    "평균 Tap출선량(ton)": fixed_avg_tap_output,
+    "평균 Tap출선시간(분)": fixed_avg_tap_time,
+    "평균 Tap출선속도(t/m)": fixed_avg_tap_speed,
+    "선행출선시간(분)": lead_time,
+    "선행출선속도(t/m)": lead_speed,
+    "선행출선량(ton, 실측)": lead_output_manual,
+    "후행출선시간(분)": follow_time,
+    "후행출선속도(t/m)": follow_speed,
+    "후행출선량(ton, 실측)": follow_output_manual,
+    "일일실시간누적배출량(ton)": total_realtime_output,
+    "누적슬래그량(ton)": accumulated_slag
 }
 
-# 세션에 저장
+# 로그 세션에 추가
 if 'log' not in st.session_state:
     st.session_state['log'] = []
 st.session_state['log'].append(record)
@@ -313,10 +378,19 @@ st.session_state['log'].append(record)
 if len(st.session_state['log']) > 500:
     st.session_state['log'].pop(0)
 
-# 테이블 표시
-df = pd.DataFrame(st.session_state['log'])
-st.dataframe(df)
+df_log = pd.DataFrame(st.session_state['log'])
+st.dataframe(df_log)
 
 # CSV 다운로드 버튼
-csv = df.to_csv(index=False).encode('utf-8-sig')
-st.download_button("📥 CSV 다운로드", data=csv, file_name="BlastTap_10.3_Log.csv", mime='text/csv')
+csv = df_log.to_csv(index=False).encode('utf-8-sig')
+st.download_button("📥 누적 리포트 CSV", data=csv, file_name="BlastTap_10.3_Log.csv", mime='text/csv')
+
+# =================== 안내 ===================
+st.markdown("---")
+st.markdown("#### 🛠️ BlastTap 10.3 Pro — AI 기반 고로조업 통합 시스템")
+st.markdown("- 제작: 신동준 (개발지원: ChatGPT + Streamlit 기반)")
+st.markdown("- 업데이트일: 2025-06 최신반영")
+st.markdown("- 기능: 일일생산량 예측, 저선관리, 출선추적, 슬래그분리 등 통합 제공")
+st.info("💡 모든 조업 정보는 기준일/시간 기반 자동 집계, 실시간 데이터 반영 및 기록 관리.")
+st.success("📌 BlastTap 10.3 Pro는 현장 적용/업데이트 버전입니다. 건의/개선점은 GitHub 등으로 제출!")
+
